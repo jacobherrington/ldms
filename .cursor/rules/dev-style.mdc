@@ -1,0 +1,15 @@
+---
+description: Apply developer style preferences from profile
+globs:
+alwaysApply: true
+---
+
+Follow `config/developer_profile.json` preferences.
+
+Prefer:
+- small functions
+- explicit types where useful
+- pragmatic architecture
+- minimal abstraction
+
+Favor clarity over cleverness.

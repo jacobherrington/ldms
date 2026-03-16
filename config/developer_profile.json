@@ -1,0 +1,50 @@
+{
+  "developer": {
+    "languages": [
+      "Ruby",
+      "TypeScript",
+      "JavaScript",
+      "CSS",
+      "Bash"
+    ],
+    "frameworks": [
+      "Rails",
+      "Next.js"
+    ],
+    "style": {
+      "prefer_small_functions": true,
+      "prefer_explicit_types": true,
+      "comments": "only_when_useful"
+    },
+    "architecture": {
+      "prefer_monolith_first": true,
+      "avoid_premature_abstraction": true
+    },
+    "testing": {
+      "strategy": "lean",
+      "critical_paths": "integration_tests"
+    },
+    "assistant_preferences": {
+      "be_direct": true,
+      "avoid_overexplaining": true
+    }
+  },
+  "default_retrieval_profile": "balanced",
+  "retrieval_profiles": {
+    "balanced": {
+      "label": "Balanced",
+      "description": "Good default for most coding tasks."
+    },
+    "conservative": {
+      "label": "Conservative",
+      "description": "Fewer, higher-confidence memories."
+    },
+    "exploratory": {
+      "label": "Exploratory",
+      "description": "Broader context with freshness bias."
+    }
+  },
+  "privacy_defaults": {
+    "mode": "session_only"
+  }
+}

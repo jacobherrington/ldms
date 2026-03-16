@@ -1,0 +1,4 @@
+/.bundle
+/vendor/bundle
+/data/memory.db
+*.log

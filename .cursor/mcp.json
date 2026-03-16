@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "dev-memory": {
+      "command": "bash",
+      "args": ["scripts/start_mcp.sh"]
+    }
+  }
+}

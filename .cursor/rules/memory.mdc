@@ -1,0 +1,25 @@
+---
+description: Local developer memory retrieval and persistence behavior
+globs:
+alwaysApply: true
+---
+
+Always retrieve context before major coding tasks.
+
+Before any non-trivial implementation (architecture, auth, data model, core logic):
+1) call `get_context_packet` with task + project_id
+2) use retrieved context to guide changes
+
+If user expresses a stable preference:
+call `save_memory` with `memory_type=dev_preference`.
+
+If a project convention emerges:
+call `save_memory` with `memory_type=project_convention`.
+
+If an architecture decision is made:
+call `log_decision` with clear rationale.
+
+Only save memories that are durable and likely useful in future sessions.
+Do not auto-save uncertain or temporary observations.
+
+Never save secrets (keys, tokens, credentials).
