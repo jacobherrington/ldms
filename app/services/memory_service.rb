@@ -44,6 +44,38 @@ module DevMemory
         "conservative" => { similarity: 0.55, confidence: 0.3, relevance: 0.12, freshness: 0.03 },
         "exploratory" => { similarity: 0.5, confidence: 0.2, relevance: 0.15, freshness: 0.15 }
       }.freeze
+      DEVELOPER_SEED_LIBRARY = {
+        "dhh" => [
+          { memory_type: "project_convention", content: "Favor simple, integrated app design over unnecessary service splits.", tags: %w[rails simplicity] },
+          { memory_type: "successful_pattern", content: "Prefer convention-driven code paths before introducing custom abstractions.", tags: %w[convention rails] },
+          { memory_type: "anti_pattern", content: "Avoid overengineering early architecture before real constraints appear.", tags: %w[architecture pragmatism] }
+        ],
+        "sandi metz" => [
+          { memory_type: "project_convention", content: "Keep methods small and focused to preserve changeability.", tags: %w[ruby design] },
+          { memory_type: "successful_pattern", content: "Optimize for low coupling and clear object responsibilities.", tags: %w[oop maintainability] },
+          { memory_type: "anti_pattern", content: "Avoid forcing inheritance when composition communicates intent better.", tags: %w[oop composition] }
+        ],
+        "martin fowler" => [
+          { memory_type: "successful_pattern", content: "Refactor in small safe steps with tests protecting behavior.", tags: %w[refactor testing] },
+          { memory_type: "architecture_decision", content: "Use evolutionary architecture and defer irreversible decisions.", tags: %w[architecture incremental] },
+          { memory_type: "anti_pattern", content: "Avoid big-bang rewrites when incremental migration is possible.", tags: %w[migration risk] }
+        ],
+        "kent beck" => [
+          { memory_type: "successful_pattern", content: "Write focused tests for desired behavior before broad refactors.", tags: %w[tdd testing] },
+          { memory_type: "project_convention", content: "Choose the simplest change that can possibly work.", tags: %w[simplicity agile] },
+          { memory_type: "anti_pattern", content: "Avoid speculative code paths that are not justified by current needs.", tags: %w[yagni pragmatism] }
+        ],
+        "aaron patterson" => [
+          { memory_type: "successful_pattern", content: "Use query hygiene and eager loading to prevent N+1 regressions.", tags: %w[rails performance] },
+          { memory_type: "project_convention", content: "Measure first, then optimize the true bottleneck.", tags: %w[profiling performance] },
+          { memory_type: "anti_pattern", content: "Avoid premature micro-optimization without runtime evidence.", tags: %w[performance evidence] }
+        ],
+        "obie fernandez" => [
+          { memory_type: "project_convention", content: "Keep Rails apps pragmatic and prioritize delivery over ceremony.", tags: %w[rails delivery] },
+          { memory_type: "successful_pattern", content: "Extract focused service objects when controller/model complexity grows.", tags: %w[service_objects rails] },
+          { memory_type: "anti_pattern", content: "Avoid bloated controllers that coordinate too many responsibilities.", tags: %w[controllers design] }
+        ]
+      }.freeze
 
       def initialize(
         db: DevMemory::DB::SQLite.connection,
@@ -94,59 +126,26 @@ module DevMemory
       end
 
       def search_memory(query:, project_id:, top_k: 8, memory_types: nil, ranking_profile: "balanced")
-        query_embedding = @embedding_service.embed(query)
-        vector_hits = @vector_store.search(
-          query_embedding: query_embedding,
-          project_id: project_id,
-          top_k: [top_k.to_i * 4, 20].max,
-          memory_types: memory_types
-        )
-
-        rows = fetch_memories(vector_hits.map { |hit| hit[:memory_id] })
-        by_id = rows.each_with_object({}) { |row, out| out[row["id"]] = row }
-
-        weights = ranking_weights(ranking_profile)
-        ranked = vector_hits.filter_map do |hit|
-          memory = by_id[hit[:memory_id]]
-          next unless memory
-          next if archived?(memory)
-
-          confidence = memory["confidence"].to_f
-          relevance_score = memory["relevance_score"].to_f
-          freshness_score = freshness(memory["created_at"])
-          combined_score = (
-            (hit[:similarity] * weights[:similarity]) +
-            (confidence * weights[:confidence]) +
-            (normalized_relevance(relevance_score) * weights[:relevance]) +
-            (freshness_score * weights[:freshness])
+        query_text = query.to_s
+        begin
+          query_embedding = @embedding_service.embed(query_text)
+          vector_hits = @vector_store.search(
+            query_embedding: query_embedding,
+            project_id: project_id,
+            top_k: [top_k.to_i * 4, 20].max,
+            memory_types: memory_types
           )
-          combined_score -= 0.1 if memory["state"] == "stale"
-
-          {
-            id: memory["id"],
-            content: memory["content"],
-            summary: memory["summary"],
-            memory_type: memory["memory_type"],
-            scope: memory["scope"],
-            project_id: memory["project_id"],
-            confidence: confidence,
-            similarity: hit[:similarity],
-            combined_score: combined_score,
-            state: memory["state"],
-            relevance_score: relevance_score,
-            ranking_explanation: ranking_explanation(
-              similarity: hit[:similarity],
-              confidence: confidence,
-              relevance_score: relevance_score,
-              freshness_score: freshness_score,
-              weights: weights
-            ),
-            tags: parse_json_array(memory["tags"]),
-            created_at: memory["created_at"]
-          }
+          return rank_vector_hits(vector_hits: vector_hits, top_k: top_k, ranking_profile: ranking_profile)
+        rescue EmbeddingService::EmbeddingError
+          # Keep retrieval available during local embedding outages.
         end
 
-        ranked.sort_by { |row| -row[:combined_score] }.first(top_k.to_i)
+        lexical_search_memory(
+          query: query_text,
+          project_id: project_id,
+          top_k: top_k,
+          memory_types: memory_types
+        )
       end
 
       def list_memories(project_id: nil, memory_type: nil, query: nil, limit: 100, include_archived: false)
@@ -301,7 +300,69 @@ module DevMemory
         end
       end
 
+      def seed_developer_memories(developers:, project_id:, scope: "global", confidence: 0.86)
+        normalized_developers = Array(developers).map { |name| normalize_developer_name(name) }.reject(&:empty?).uniq
+        created = []
+        skipped_existing = []
+        skipped_unknown = []
+
+        normalized_developers.each do |developer_name|
+          templates = DEVELOPER_SEED_LIBRARY[developer_name]
+          if templates.nil?
+            skipped_unknown << developer_name
+            next
+          end
+
+          templates.each do |template|
+            content = "#{display_developer_name(developer_name)}: #{template[:content]}"
+            memory_type = template[:memory_type]
+            next skipped_existing << content if memory_exists?(content: content, memory_type: memory_type, project_id: project_id)
+
+            result = save_memory(
+              content: content,
+              memory_type: memory_type,
+              scope: scope,
+              project_id: project_id,
+              confidence: confidence,
+              tags: ["seed", "developer", developer_name.tr(" ", "_")] + Array(template[:tags]),
+              source: "developer_seed_tool"
+            )
+            created << result[:memory_id]
+          end
+        end
+
+        {
+          status: "ok",
+          seeded_count: created.length,
+          skipped_existing_count: skipped_existing.length,
+          skipped_unknown_count: skipped_unknown.length,
+          developers_requested: normalized_developers,
+          developers_seeded: normalized_developers - skipped_unknown,
+          skipped_unknown_developers: skipped_unknown
+        }
+      end
+
       private
+
+      def normalize_developer_name(name)
+        name.to_s.downcase.strip.gsub(/\s+/, " ")
+      end
+
+      def display_developer_name(name)
+        name.split(" ").map(&:capitalize).join(" ")
+      end
+
+      def memory_exists?(content:, memory_type:, project_id:)
+        sql = <<~SQL
+          SELECT id FROM memories
+          WHERE content = ?
+            AND memory_type = ?
+            AND COALESCE(project_id, '') = COALESCE(?, '')
+          LIMIT 1
+        SQL
+        row = @db.get_first_row(sql, [content, memory_type, project_id])
+        !row.nil?
+      end
 
       def fetch_memories(ids)
         return [] if ids.empty?
@@ -381,6 +442,158 @@ module DevMemory
             freshness: freshness_score.round(4)
           },
           weights: weights
+        }
+      end
+
+      def rank_vector_hits(vector_hits:, top_k:, ranking_profile:)
+        rows = fetch_memories(vector_hits.map { |hit| hit[:memory_id] })
+        by_id = rows.each_with_object({}) { |row, out| out[row["id"]] = row }
+        weights = ranking_weights(ranking_profile)
+
+        ranked = vector_hits.filter_map do |hit|
+          memory = by_id[hit[:memory_id]]
+          next unless memory
+          next if archived?(memory)
+
+          memory_result(
+            memory: memory,
+            similarity: hit[:similarity],
+            weights: weights,
+            ranking_explanation_payload: ranking_explanation(
+              similarity: hit[:similarity],
+              confidence: memory["confidence"].to_f,
+              relevance_score: memory["relevance_score"].to_f,
+              freshness_score: freshness(memory["created_at"]),
+              weights: weights
+            )
+          )
+        end
+
+        ranked.sort_by { |row| -row[:combined_score] }.first(top_k.to_i)
+      end
+
+      def lexical_search_memory(query:, project_id:, top_k:, memory_types:)
+        rows = fetch_lexical_candidates(
+          query: query,
+          project_id: project_id,
+          top_k: top_k,
+          memory_types: memory_types
+        )
+        tokens = tokenize_query(query)
+
+        ranked = rows.filter_map do |memory|
+          next if archived?(memory)
+
+          similarity = lexical_similarity(memory: memory, tokens: tokens)
+          next if similarity <= 0.0
+
+          memory_result(
+            memory: memory,
+            similarity: similarity,
+            weights: nil,
+            ranking_explanation_payload: {
+              profile: "lexical_fallback",
+              factors: {
+                lexical_similarity: similarity.round(4),
+                confidence: memory["confidence"].to_f.round(4),
+                relevance: normalized_relevance(memory["relevance_score"]).round(4),
+                freshness: freshness(memory["created_at"]).round(4)
+              },
+              weights: nil
+            }
+          )
+        end
+
+        ranked.sort_by { |row| -row[:combined_score] }.first(top_k.to_i)
+      end
+
+      def fetch_lexical_candidates(query:, project_id:, top_k:, memory_types:)
+        sql = +"SELECT * FROM memories WHERE COALESCE(is_archived, 0) = 0"
+        bind_values = []
+
+        if project_id && !project_id.to_s.strip.empty?
+          sql << " AND project_id = ?"
+          bind_values << project_id
+        end
+
+        if memory_types && !memory_types.empty?
+          placeholders = (["?"] * memory_types.length).join(", ")
+          sql << " AND memory_type IN (#{placeholders})"
+          bind_values.concat(memory_types)
+        end
+
+        tokens = tokenize_query(query)
+        token_conditions = tokens.map { "(content LIKE ? OR summary LIKE ? OR tags LIKE ?)" }
+        if token_conditions.empty?
+          sql << " AND (content LIKE ? OR summary LIKE ? OR tags LIKE ?)"
+          like_query = "%#{query.to_s.strip}%"
+          bind_values.concat([like_query, like_query, like_query])
+        else
+          sql << " AND (#{token_conditions.join(' OR ')})"
+          tokens.each do |token|
+            like_token = "%#{token}%"
+            bind_values.concat([like_token, like_token, like_token])
+          end
+        end
+
+        sql << " ORDER BY datetime(updated_at) DESC, datetime(created_at) DESC LIMIT ?"
+        bind_values << [top_k.to_i * 6, 50].max
+
+        @db.execute(sql, bind_values)
+      end
+
+      def tokenize_query(query)
+        query.to_s.downcase.scan(/[a-z0-9_]+/).uniq.first(12)
+      end
+
+      def lexical_similarity(memory:, tokens:)
+        return 0.0 if tokens.empty?
+
+        searchable = [
+          memory["content"].to_s.downcase,
+          memory["summary"].to_s.downcase,
+          memory["tags"].to_s.downcase
+        ].join(" ")
+        matches = tokens.count { |token| searchable.include?(token) }
+        (matches.to_f / tokens.length).round(4)
+      end
+
+      def memory_result(memory:, similarity:, weights:, ranking_explanation_payload:)
+        confidence = memory["confidence"].to_f
+        relevance_score = memory["relevance_score"].to_f
+        freshness_score = freshness(memory["created_at"])
+        combined_score = if weights
+                           (
+                             (similarity * weights[:similarity]) +
+                             (confidence * weights[:confidence]) +
+                             (normalized_relevance(relevance_score) * weights[:relevance]) +
+                             (freshness_score * weights[:freshness])
+                           )
+                         else
+                           (
+                             (similarity * 0.6) +
+                             (confidence * 0.25) +
+                             (normalized_relevance(relevance_score) * 0.1) +
+                             (freshness_score * 0.05)
+                           )
+                         end
+        combined_score -= 0.1 if memory["state"] == "stale"
+
+        {
+          id: memory["id"],
+          content: memory["content"],
+          summary: memory["summary"],
+          memory_type: memory["memory_type"],
+          scope: memory["scope"],
+          project_id: memory["project_id"],
+          confidence: confidence,
+          similarity: similarity,
+          combined_score: combined_score,
+          state: memory["state"],
+          relevance_score: relevance_score,
+          ranking_explanation: ranking_explanation_payload,
+          tags: parse_json_array(memory["tags"]),
+          created_at: memory["created_at"]
         }
       end
 

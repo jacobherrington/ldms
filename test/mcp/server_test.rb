@@ -11,40 +11,35 @@ class FakeToolsForServerTest
   end
 
   def list
-    []
-  end
-end
-
-class FakeSessionServiceForServerTest
-  attr_reader :started_sessions, :ended_sessions, :requests
-
-  def initialize
-    @started_sessions = []
-    @ended_sessions = []
-    @requests = []
-  end
-
-  def start_session(project_id:)
-    id = "session-#{@started_sessions.length + 1}"
-    @started_sessions << { id: id, project_id: project_id }
-    id
-  end
-
-  def end_session(session_id:)
-    @ended_sessions << session_id
-  end
-
-  def record_request(**kwargs)
-    @requests << kwargs
-  end
-
-  def get_setting(_key, default:)
-    default
+    [{ name: "get_dev_profile", inputSchema: { type: "object" } }]
   end
 end
 
 class ServerTest < Minitest::Test
-  def test_records_ok_request_and_closes_session_at_eof
+  def test_initialize_response_contains_server_metadata_and_instructions
+    input = StringIO.new(
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: {} }.to_json + "\n"
+    )
+    output = StringIO.new
+    error = StringIO.new
+
+    server = DevMemory::MCP::Server.new(
+      input: input,
+      output: output,
+      error: error,
+      tools: FakeToolsForServerTest.new
+    )
+
+    server.start
+
+    response = JSON.parse(output.string.split("\n").first)
+    assert_equal "2.0", response["jsonrpc"]
+    result = response.fetch("result")
+    assert_equal "dev-memory", result.fetch("serverInfo").fetch("name")
+    assert result.fetch("instructions").include?("Default project_id is")
+  end
+
+  def test_handles_initialize_and_tool_call
     input = StringIO.new(
       [
         { jsonrpc: "2.0", id: 1, method: "initialize", params: {} }.to_json,
@@ -53,23 +48,46 @@ class ServerTest < Minitest::Test
     )
     output = StringIO.new
     error = StringIO.new
-    session_service = FakeSessionServiceForServerTest.new
 
     server = DevMemory::MCP::Server.new(
       input: input,
       output: output,
       error: error,
-      tools: FakeToolsForServerTest.new,
-      session_service: session_service
+      tools: FakeToolsForServerTest.new
     )
 
     server.start
 
-    assert_equal 1, session_service.started_sessions.length
-    assert_equal ["session-1"], session_service.ended_sessions
-    assert_equal 1, session_service.requests.length
-    assert_equal "ok", session_service.requests.first[:status]
-    assert_nil session_service.requests.first[:tool_name]
+    responses = output.string.split("\n").map { |line| JSON.parse(line) }
+    tool_response = responses.find { |r| r["id"] == 2 }
+    refute_nil tool_response
+    assert_equal true, tool_response.fetch("result").fetch("structuredContent").fetch("ok")
+  end
+
+  def test_tools_list_round_trip_uses_tools_catalog
+    input = StringIO.new(
+      [
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: {} }.to_json,
+        { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }.to_json
+      ].join("\n") + "\n"
+    )
+    output = StringIO.new
+    error = StringIO.new
+
+    server = DevMemory::MCP::Server.new(
+      input: input,
+      output: output,
+      error: error,
+      tools: FakeToolsForServerTest.new
+    )
+
+    server.start
+
+    responses = output.string.split("\n").map { |line| JSON.parse(line) }
+    list_response = responses.find { |payload| payload["id"] == 2 }
+    refute_nil list_response
+    tool_name = list_response.fetch("result").fetch("tools").first.fetch("name")
+    assert_equal "get_dev_profile", tool_name
   end
 
   def test_records_error_request_when_tool_call_fails
@@ -81,20 +99,15 @@ class ServerTest < Minitest::Test
     )
     output = StringIO.new
     error = StringIO.new
-    session_service = FakeSessionServiceForServerTest.new
 
     server = DevMemory::MCP::Server.new(
       input: input,
       output: output,
       error: error,
-      tools: FakeToolsForServerTest.new,
-      session_service: session_service
+      tools: FakeToolsForServerTest.new
     )
 
     server.start
-
-    assert_equal 1, session_service.requests.length
-    assert_equal "error", session_service.requests.first[:status]
 
     responses = output.string.split("\n").map { |line| JSON.parse(line) }
     error_response = responses.find { |r| r["id"] == 2 }

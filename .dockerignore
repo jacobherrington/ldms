@@ -1,8 +1,0 @@
-.git
-.cursor
-.cursorignore
-data
-tmp
-*.log
-vendor/bundle
-.bundle

@@ -4,14 +4,21 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GLOBAL_MCP_PATH="${HOME}/.cursor/mcp.json"
 MODE="${1:---print}"
+SERVER_NAME="${LDMS_GLOBAL_SERVER_NAME:-user-dev-memory-global}"
 
 print_snippet() {
   cat <<EOF
 Add this server to your global Cursor MCP config:
 
 {
+  "mcpServers": {
+    "$SERVER_NAME": {
+      "command": "bash",
+      "args": ["$ROOT_DIR/scripts/start_mcp.sh"]
+    }
+  },
   "servers": {
-    "dev-memory-global": {
+    "$SERVER_NAME": {
       "command": "bash",
       "args": ["$ROOT_DIR/scripts/start_mcp.sh"]
     }
@@ -40,16 +47,28 @@ else
   {}
 end
 
+server_name = ARGV[2]
+legacy_name = "dev-memory-global"
+
+config["mcpServers"] ||= {}
 config["servers"] ||= {}
-config["servers"]["dev-memory-global"] = {
+entry = {
   "command" => "bash",
   "args" => [server_script]
 }
+config["mcpServers"][server_name] = entry
+config["servers"][server_name] = entry
+
+if server_name != legacy_name
+  config["mcpServers"].delete(legacy_name)
+  config["servers"].delete(legacy_name)
+end
 
 File.write(path, JSON.pretty_generate(config) + "\n")
 puts "[ldms] wrote global MCP config: #{path}"
-' "$GLOBAL_MCP_PATH" "$ROOT_DIR/scripts/start_mcp.sh"
+' "$GLOBAL_MCP_PATH" "$ROOT_DIR/scripts/start_mcp.sh" "$SERVER_NAME"
 
+  echo "[ldms] server name: $SERVER_NAME"
   echo "[ldms] done. Reload Cursor to pick up global server."
 }
 

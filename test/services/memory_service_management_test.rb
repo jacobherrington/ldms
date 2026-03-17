@@ -3,10 +3,17 @@ require_relative "../test_helper"
 require_relative "../../app/db/sqlite"
 require_relative "../../app/db/vector_store"
 require_relative "../../app/services/memory_service"
+require_relative "../../app/services/embedding_service"
 
 class FakeEmbeddingService
   def embed(_text)
     [0.1, 0.2, 0.3]
+  end
+end
+
+class FailingEmbeddingService
+  def embed(_text)
+    raise DevMemory::Services::EmbeddingService::ConnectionError, "offline"
   end
 end
 
@@ -109,5 +116,49 @@ class MemoryServiceManagementTest < Minitest::Test
     memory = @service.list_memories(project_id: @project_id).find { |m| m[:id] == memory_id }
     refute_nil memory
     assert_in_delta 0.0, memory[:relevance_score], 0.11
+  end
+
+  def test_search_memory_uses_lexical_fallback_when_embeddings_fail
+    @service.save_memory(
+      content: "Auth tokens should rotate with short expiry windows",
+      memory_type: "project_convention",
+      scope: "project",
+      project_id: @project_id,
+      confidence: 0.8,
+      tags: ["auth"]
+    )
+
+    fallback_service = DevMemory::Services::MemoryService.new(
+      db: @db,
+      vector_store: DevMemory::DB::VectorStore.new(db: @db),
+      embedding_service: FailingEmbeddingService.new
+    )
+
+    results = fallback_service.search_memory(
+      query: "auth token expiry",
+      project_id: @project_id,
+      top_k: 5,
+      memory_types: ["project_convention"]
+    )
+
+    refute_empty results
+    assert_equal "lexical_fallback", results.first[:ranking_explanation][:profile]
+    assert_equal "project_convention", results.first[:memory_type]
+  end
+
+  def test_seed_developer_memories_creates_records_and_skips_duplicates
+    seeded = @service.seed_developer_memories(
+      developers: ["Sandi Metz", "Unknown Dev"],
+      project_id: @project_id
+    )
+    assert_equal 3, seeded[:seeded_count]
+    assert_equal 1, seeded[:skipped_unknown_count]
+
+    seeded_again = @service.seed_developer_memories(
+      developers: ["Sandi Metz"],
+      project_id: @project_id
+    )
+    assert_equal 0, seeded_again[:seeded_count]
+    assert_equal 3, seeded_again[:skipped_existing_count]
   end
 end

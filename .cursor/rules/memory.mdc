@@ -7,8 +7,13 @@ alwaysApply: true
 Always retrieve context before major coding tasks.
 
 Before any non-trivial implementation (architecture, auth, data model, core logic):
-1) call `get_context_packet` with task + project_id
+1) call `begin_task_context` with task + task_type (+ optional project_id)
 2) use retrieved context to guide changes
+
+Default `project_id` resolves to the current workspace automatically.
+Recommended `task_type`: `feature`, `bugfix`, `refactor`, `docs`, `test`, `ops`, or `auto`.
+
+Use `get_context_packet` only when you need lower-level/debug retrieval output.
 
 If user expresses a stable preference:
 call `save_memory` with `memory_type=dev_preference`.

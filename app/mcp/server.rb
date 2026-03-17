@@ -4,7 +4,6 @@
 require "json"
 require "dotenv/load"
 require_relative "../db/sqlite"
-require_relative "../services/session_service"
 require_relative "tools"
 
 module DevMemory
@@ -14,8 +13,7 @@ module DevMemory
         input: $stdin,
         output: $stdout,
         error: $stderr,
-        tools: nil,
-        session_service: nil
+        tools: nil
       )
         @input = input
         @output = output
@@ -24,9 +22,6 @@ module DevMemory
         @workspace_root = Dir.pwd
         @default_project_id = ENV["LDMS_PROJECT_ID"] || File.basename(@workspace_root)
         @tools = tools || Tools.new(default_project_id: @default_project_id)
-        @session_service = session_service || DevMemory::Services::SessionService.new
-        @session_id = nil
-        @telemetry_enabled = ENV.fetch("LDMS_MONITOR_TELEMETRY", "true") != "false"
       end
 
       def start
@@ -38,8 +33,6 @@ module DevMemory
         rescue StandardError => e
           respond_error(nil, -32000, e.message)
         end
-      ensure
-        ensure_session_closed!
       end
 
       private
@@ -51,7 +44,6 @@ module DevMemory
 
         case method
         when "initialize"
-          reset_session!
           respond(id, {
                     protocolVersion: "2024-11-05",
                     serverInfo: {
@@ -85,82 +77,11 @@ module DevMemory
       end
 
       def handle_tool_call(id:, params:)
-        start_time = nil
         name = params.fetch(:name)
         args = stringify_keys(params[:arguments] || {})
-        start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         result = @tools.call(name, args)
-        elapsed_ms = elapsed_ms_since(start_time)
-        safe_record_request(
-          method: "tools/call",
-          tool_name: name,
-          project_id: resolve_project_id(args["project_id"]),
-          status: "ok",
-          duration_ms: elapsed_ms
-        )
         respond(id, result)
-      rescue StandardError => e
-        safe_record_request(
-          method: "tools/call",
-          tool_name: params[:name],
-          project_id: resolve_project_id((params[:arguments] || {})[:project_id]),
-          status: "error",
-          duration_ms: elapsed_ms_since(start_time)
-        )
-        raise e
-      end
-
-      def reset_session!
-        return unless telemetry_enabled?
-
-        ensure_session_closed!
-        @session_id = @session_service.start_session(project_id: @default_project_id)
-      rescue StandardError => e
-        @error.puts("Session start telemetry failed: #{e.message}")
-      end
-
-      def ensure_session_closed!
-        return unless telemetry_enabled?
-        return if @session_id.nil?
-
-        @session_service.end_session(session_id: @session_id)
-        @session_id = nil
-      rescue StandardError => e
-        @error.puts("Session end telemetry failed: #{e.message}")
-      end
-
-      def safe_record_request(method:, tool_name:, project_id:, status:, duration_ms:)
-        return unless telemetry_enabled?
-        session_only_mode = @session_service.get_setting("privacy_mode", default: "session_only") == "session_only"
-
-        @session_service.record_request(
-          session_id: @session_id,
-          method: method,
-          tool_name: session_only_mode ? nil : tool_name,
-          project_id: project_id,
-          status: status,
-          duration_ms: duration_ms
-        )
-      rescue StandardError => e
-        @error.puts("Request telemetry failed: #{e.message}")
-      end
-
-      def telemetry_enabled?
-        @telemetry_enabled
-      end
-
-      def elapsed_ms_since(start_time)
-        return 0 unless start_time
-
-        ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000.0).round
-      end
-
-      def resolve_project_id(project_id)
-        id = project_id.to_s.strip
-        return @default_project_id if id.empty?
-
-        id
       end
 
       def respond(id, result)

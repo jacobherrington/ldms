@@ -1,71 +1,79 @@
 # Local Dev Memory System (LDMS)
 
-LDMS is local-first memory for coding with Cursor.
+Local-first memory for Cursor coding.  
+It stores preferences, conventions, and decisions so context gets better over time.
 
-It stores conventions, preferences, and decisions so context gets better over time.
+## 5-Minute Start
 
-## Start Here (New Developer)
+1. From this folder, run:
+   - `bin/ldms setup`
+2. Start LDMS:
+   - `bin/ldms`
+3. Open the UI URL shown in terminal.
+4. Reload Cursor window once.
+5. In chat, verify:
+   - `Call get_dev_profile`
 
-- Read `docs/QUICK_SETUP.md`
-- That is the canonical onboarding path (UI-first + global Cursor setup)
+## Daily Flow
 
-## Daily Commands
+1. Start LDMS with `bin/ldms`
+2. Ask Cursor to run preflight context before larger tasks:
+   - `Call begin_task_context with task "..." and task_type "auto"`
+   - `task_type` options: `feature`, `bugfix`, `refactor`, `docs`, `test`, `ops`, `auto`
+3. (Optional) Use low-level context packet for debugging:
+   - `Call get_context_packet with task "..."`
+4. Save useful patterns/decisions:
+   - `Call save_memory ...`
+   - `Call log_decision ...`
 
-- `bin/ldms start` - local runtime checks + MCP server
-- `bin/ldms ui` - open the LDMS UI
-- `bundle exec rake smoke` - handshake check
-- `bundle exec rake test` - test suite
-- `bundle exec rake preseed` - load curated dev ideas
+### Task Type Examples
 
-## Core Flow
+- Feature: `Call begin_task_context with task "add billing retry flow" and task_type "feature"`
+- Bugfix: `Call begin_task_context with task "fix websocket reconnect regression" and task_type "bugfix"`
+- Refactor: `Call begin_task_context with task "refactor memory ranking into smaller methods" and task_type "refactor"`
+- Docs: `Call begin_task_context with task "document global MCP setup" and task_type "docs"`
+- Test: `Call begin_task_context with task "add regression test for fallback search" and task_type "test"`
+- Ops: `Call begin_task_context with task "stabilize CI startup checks" and task_type "ops"`
 
-1. Start LDMS (`bin/ldms start` for local, or container runtime from quick setup).
-2. Use Cursor normally.
-3. Save durable lessons:
-   - `save_memory` for conventions/preferences
-   - `log_decision` for architecture choices
+## Global Mode (Any Project)
 
-## Make Cursor Respect LDMS
-
-1. Open this folder as the Cursor workspace root (`dev-memory`).
-2. Start LDMS before coding (`bin/ldms start` or container runtime).
-3. Reload Cursor window after startup so MCP reconnects.
-4. In chat, ask Cursor to load context first:
-   - `Call get_context_packet for this task before coding.`
-5. After finishing meaningful work, store durable guidance:
-   - `Call save_memory ...` for conventions/preferences
-   - `Call log_decision ...` for architecture decisions
-
-## Make It Global Across Cursor
-
-If you want LDMS respected in every repo (not just this one):
-
-1. Install the global MCP server entry once:
-   - `bundle exec rake global_mcp:install`
+1. Install global MCP entry:
+   - `bin/ldms global-install`
 2. Reload Cursor.
-3. In any project chat, use this default opener:
-   - `Before coding, call get_context_packet for this task and use it as the primary context.`
+3. In any workspace, verify:
+   - `Call get_dev_profile`
 
-Use this to verify global wiring:
+## Commands
 
-- `bundle exec rake global_mcp:print`
+- `bin/ldms` or `bin/ldms up` - start UI-first mode
+- `bin/ldms start` - doctor + smoke + MCP server
+- `bin/ldms dev` - MCP server only
+- `bin/ldms ui` - UI only
+- `bin/ldms check` - doctor + smoke
+- `bin/ldms test` - test suite
+- `bin/ldms global-install` - install global Cursor MCP entry
+- `bin/ldms global-print` - print global MCP snippet
 
-Note:
-- Global MCP makes LDMS available across repositories.
-- Cursor still follows instructions best when you explicitly say context-first at task start.
+## Core MCP Tools
 
-## Runtime Notes
+- `get_dev_profile`
+- `search_memory`
+- `begin_task_context`
+- `get_context_packet`
+- `save_memory`
+- `seed_developer_memories`
+- `log_decision`
 
-- Use `LDMS_RUNTIME=docker` for container runtime.
-- Open Cursor from the same shell if relying on shell env vars.
+### Seed Developer Principles
+
+You can quickly seed curated memory from developer influences:
+
+- `Call seed_developer_memories with developers ["sandi metz", "kent beck"]`
+- Optional args: `project_id`, `scope`, `confidence`
+- Current presets: `dhh`, `sandi metz`, `martin fowler`, `kent beck`, `aaron patterson`, `obie fernandez`
+
+## Notes
+
 - If tools do not appear, reload Cursor window.
-
-## Important Paths
-
-- Profile config: `config/developer_profile.json`
-- Local DB: `data/memory.db`
-- UI server: `app/ui/server.rb`
-
-## Contributor Guide
-
-- See `CONTRIBUTING.md`
+- If port `4567` is busy, LDMS picks the next open port.
+- Docker runtime is not supported in this minimal build.

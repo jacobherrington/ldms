@@ -1,64 +1,39 @@
-# LDMS Quick Setup For New Developers
+# LDMS Quick Setup
 
-This is the canonical getting-started path.
-Goal: get LDMS running, complete onboarding in UI, and enable global Cursor usage.
+Use this when you want LDMS running fast.
 
-## Prerequisites
+## Prereqs
 
-- Docker with `docker compose`
-- [Ollama](https://ollama.com)
-- Ruby + Bundler (for `bundle exec` commands)
+- Ruby 3.2+
+- Bundler
+- Ollama running locally
 
-## Container-First Happy Path (Recommended)
+## Setup + Run
 
-From the `dev-memory` directory:
+From `dev-memory`:
 
-1. Start Ollama and pull the embedding model:
-   - `ollama serve`
-   - `ollama pull nomic-embed-text`
-2. Bootstrap LDMS:
-   - `bundle exec rake bootstrap`
-3. Set runtime for Cursor MCP:
-   - `export LDMS_RUNTIME=docker`
-4. Open Cursor from the same shell:
-   - `cursor .`
-5. Reload Cursor window:
-   - Command Palette -> `Developer: Reload Window`
-6. Open LDMS UI:
-   - `bin/ldms ui`
-   - visit `http://localhost:4567`
+1. `bin/ldms setup`
+2. `bin/ldms`
+3. Open the UI URL shown in terminal.
+4. Reload Cursor window.
 
-## First-Run Checklist In UI (No Terminal Needed After Launch)
+## Verify In Cursor
 
-1. Run one-click smoke in the onboarding banner.
-2. Complete the onboarding profile step.
-3. Create first memory with onboarding seed.
-4. Click **One-click Global Setup** in the onboarding wizard or Quick Actions panel.
-   - Runs: doctor -> smoke -> preseed -> global MCP install
+Run these in chat:
 
-## Make Cursor Respect LDMS Globally
+1. `Call get_dev_profile`
+2. `Call save_memory with content "ldms quick check", memory_type "project_convention", scope "project"`
+3. `Call search_memory with query "ldms quick check", top_k 3`
+4. `Call get_context_packet with task "implement feature X"`
 
-After global setup finishes:
+## Global (All Projects)
 
-1. Reload Cursor.
-2. In any project, start tasks with:
-   - `Before coding, call get_context_packet for this task and use it as primary context.`
-3. Save durable project learnings as you work:
-   - `save_memory` for conventions/preferences
-   - `log_decision` for architecture choices
+1. `bin/ldms global-install`
+2. Reload Cursor
+3. In any workspace: `Call get_dev_profile`
 
-## Local Runtime Fallback
+## If Something Looks Off
 
-If you are not using Docker runtime:
-
-1. `bundle install`
-2. `ollama serve`
-3. `ollama pull nomic-embed-text`
-4. `bin/ldms start`
-
-## Success Criteria
-
-- Smoke returns MCP `initialize` response.
-- UI shows onboarding checks and seed succeeds.
-- One-click global setup shows all steps as `ok`.
-- A first memory appears in the memories list.
+- Tools missing: reload Cursor window.
+- UI port conflict: set `LDMS_UI_PORT=4570` and rerun `bin/ldms`.
+- Health check: run `bin/ldms check`.

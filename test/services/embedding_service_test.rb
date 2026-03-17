@@ -25,7 +25,9 @@ class EmbeddingServiceTest < Minitest::Test
   def test_embed_raises_on_connection_failure
     service = DevMemory::Services::EmbeddingService.new(endpoint: "http://127.0.0.1:9/api/embeddings")
 
-    error = assert_raises(RuntimeError) { service.send(:request_embeddings, "hello") }
+    error = assert_raises(DevMemory::Services::EmbeddingService::ConnectionError) do
+      service.send(:request_embeddings, "hello")
+    end
     assert_includes error.message, "Could not connect to Ollama"
   end
 end

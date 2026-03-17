@@ -2,8 +2,6 @@ require "json"
 require_relative "../services/profile_service"
 require_relative "../services/memory_service"
 require_relative "../services/retrieval_service"
-require_relative "../services/repo_index_service"
-require_relative "../services/workflow_service"
 
 module DevMemory
   module MCP
@@ -12,15 +10,11 @@ module DevMemory
         profile_service: DevMemory::Services::ProfileService.new,
         memory_service: DevMemory::Services::MemoryService.new,
         retrieval_service: DevMemory::Services::RetrievalService.new,
-        repo_index_service: DevMemory::Services::RepoIndexService.new,
-        workflow_service: DevMemory::Services::WorkflowService.new,
         default_project_id: ENV["LDMS_PROJECT_ID"] || "default-project"
       )
         @profile_service = profile_service
         @memory_service = memory_service
         @retrieval_service = retrieval_service
-        @repo_index_service = repo_index_service
-        @workflow_service = workflow_service
         @default_project_id = default_project_id
       end
 
@@ -61,7 +55,6 @@ module DevMemory
                 task: { type: "string" },
                 project_id: { type: ["string", "null"] },
                 top_k: { type: "integer", default: 8 },
-                ranking_profile: { type: "string", default: "balanced" },
                 memory_types: {
                   type: "array",
                   items: { type: "string" }
@@ -70,39 +63,20 @@ module DevMemory
             }
           },
           {
-            name: "index_repo",
-            description: "Index workspace files and symbols for context routing.",
+            name: "begin_task_context",
+            description: "Build task-aware preflight context before implementation. Uses current workspace project_id by default.",
             inputSchema: {
               type: "object",
+              required: ["task"],
               properties: {
+                task: { type: "string" },
+                task_type: {
+                  type: "string",
+                  enum: %w[feature bugfix refactor docs test ops auto],
+                  default: "auto"
+                },
                 project_id: { type: ["string", "null"] },
-                workspace_root: { type: "string" },
-                max_files: { type: "integer", default: 500 }
-              }
-            }
-          },
-          {
-            name: "run_workflow",
-            description: "Create a workflow run with guardrails and preview.",
-            inputSchema: {
-              type: "object",
-              required: %w[workflow_type prompt],
-              properties: {
-                project_id: { type: ["string", "null"] },
-                workflow_type: { type: "string" },
-                prompt: { type: "string" },
-                dry_run: { type: "boolean", default: true }
-              }
-            }
-          },
-          {
-            name: "list_workflows",
-            description: "List recent workflow runs.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                project_id: { type: ["string", "null"] },
-                limit: { type: "integer", default: 25 }
+                top_k: { type: "integer", default: 8 }
               }
             }
           },
@@ -119,6 +93,23 @@ module DevMemory
                 project_id: { type: ["string", "null"] },
                 confidence: { type: "number", default: 0.8 },
                 tags: { type: "array", items: { type: "string" } }
+              }
+            }
+          },
+          {
+            name: "seed_developer_memories",
+            description: "Seed curated memory entries based on developers you like.",
+            inputSchema: {
+              type: "object",
+              required: ["developers"],
+              properties: {
+                developers: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                project_id: { type: ["string", "null"] },
+                scope: { type: "string", default: "global" },
+                confidence: { type: "number", default: 0.86 }
               }
             }
           },
@@ -163,32 +154,16 @@ module DevMemory
               task: args.fetch("task"),
               project_id: resolve_project_id(args["project_id"]),
               top_k: args.fetch("top_k", 8),
-              ranking_profile: args.fetch("ranking_profile", "balanced"),
               memory_types: args["memory_types"]
             )
           )
-        when "index_repo"
+        when "begin_task_context"
           payload(
-            @repo_index_service.index_workspace(
+            task_context: @retrieval_service.build_task_context(
+              task: args.fetch("task"),
               project_id: resolve_project_id(args["project_id"]),
-              workspace_root: args.fetch("workspace_root", Dir.pwd),
-              max_files: args.fetch("max_files", 500)
-            )
-          )
-        when "run_workflow"
-          payload(
-            @workflow_service.run(
-              workflow_type: args.fetch("workflow_type"),
-              prompt: args.fetch("prompt"),
-              project_id: resolve_project_id(args["project_id"]),
-              dry_run: args.fetch("dry_run", true)
-            )
-          )
-        when "list_workflows"
-          payload(
-            workflow_runs: @workflow_service.list_runs(
-              project_id: resolve_project_id(args["project_id"]),
-              limit: args.fetch("limit", 25)
+              task_type: args.fetch("task_type", "auto"),
+              top_k: args.fetch("top_k", 8)
             )
           )
         when "save_memory"
@@ -200,6 +175,15 @@ module DevMemory
               project_id: resolve_project_id(args["project_id"]),
               confidence: args.fetch("confidence", 0.8),
               tags: args.fetch("tags", [])
+            )
+          )
+        when "seed_developer_memories"
+          payload(
+            @memory_service.seed_developer_memories(
+              developers: args.fetch("developers"),
+              project_id: resolve_project_id(args["project_id"]),
+              scope: args.fetch("scope", "global"),
+              confidence: args.fetch("confidence", 0.86)
             )
           )
         when "log_decision"

@@ -5,6 +5,10 @@ require "uri"
 module DevMemory
   module Services
     class EmbeddingService
+      class EmbeddingError < StandardError; end
+      class ConnectionError < EmbeddingError; end
+      class ResponseError < EmbeddingError; end
+
       DEFAULT_MODEL = ENV.fetch("LDMS_EMBED_MODEL", "nomic-embed-text")
       DEFAULT_URL = ENV.fetch("LDMS_OLLAMA_URL", "http://localhost:11434/api/embeddings")
 
@@ -16,7 +20,7 @@ module DevMemory
       def embed(text)
         response = request_embeddings(text.to_s)
         vector = response["embedding"] || response["embeddings"]&.first
-        raise "Embedding response missing vector" unless vector.is_a?(Array)
+        raise ResponseError, "Embedding response missing vector" unless vector.is_a?(Array)
 
         vector.map(&:to_f)
       end
@@ -33,11 +37,11 @@ module DevMemory
         http.open_timeout = 5
         http.use_ssl = @endpoint.scheme == "https"
         res = http.request(req)
-        raise "Embedding request failed (#{res.code})" unless res.code.to_i.between?(200, 299)
+        raise ResponseError, "Embedding request failed (#{res.code})" unless res.code.to_i.between?(200, 299)
 
         JSON.parse(res.body)
       rescue Errno::ECONNREFUSED
-        raise "Could not connect to Ollama at #{@endpoint}. Start it with `ollama serve`."
+        raise ConnectionError, "Could not connect to Ollama at #{@endpoint}. Start it with `ollama serve`."
       end
     end
   end

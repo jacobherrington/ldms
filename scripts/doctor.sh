@@ -74,7 +74,7 @@ fi
 if [[ -f data/memory.db ]]; then
   ok "sqlite db exists at data/memory.db"
 else
-  warn "sqlite db missing (run: bundle exec rake init_db)"
+  warn "sqlite db missing (run: bin/ldms setup)"
 fi
 
 echo

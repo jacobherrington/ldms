@@ -4,56 +4,103 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+run_cmd() {
+  "$@"
+}
+
+warn_legacy() {
+  echo "[ldms] note: '$1' is a compatibility alias."
+}
+
 print_help() {
   cat <<'EOF'
 ldms command helper
 
 Usage:
-  bin/ldms <command> [args]
+  bin/ldms [command] [args]
 
-Common commands:
+Commands:
+  up           Single-command startup (default, UI-first)
   help         Show this help
-  quickstart   Print simplest startup flow
-  start        Run checks then start local MCP server
+  start        Run doctor + smoke + MCP server
+  dev          Start MCP server only
+  ui           Start UI only
   check        Run doctor + smoke
-  ui           Start the local LDMS web UI
+  doctor       Run local diagnostics
+  smoke        Run MCP initialize smoke check
+  setup        Install dependencies + init DB
   test         Run tests
-  eval         Run eval gates
-  bootstrap    Container-first setup
+  global-install Install global Cursor MCP config
   global-print Print global MCP config snippet
-  global-install Install global MCP config
 EOF
 }
 
 if [[ $# -eq 0 ]]; then
-  print_help
-  exit 0
+  command_name="up"
+else
+  command_name="$1"
+  shift || true
 fi
 
-command_name="$1"
-shift || true
-
 case "$command_name" in
+  up)
+    echo "[ldms] starting UI-first mode (single command)"
+    echo "[ldms] Cursor MCP tools are launched by Cursor using configured MCP server entries."
+    exec bash scripts/run_ui.sh "$@"
+    ;;
   help|-h|--help)
     print_help
     ;;
-  quickstart)
-    exec bundle exec rake quickstart "$@"
+  setup)
+    run_cmd bundle install
+    run_cmd ruby scripts/init_db.rb
+    ;;
+  dev|run)
+    if [[ "$command_name" == "run" ]]; then
+      warn_legacy "run"
+    fi
+    exec bash scripts/run.sh "$@"
+    ;;
+  smoke)
+    run_cmd bash scripts/run.sh --smoke "$@"
+    ;;
+  doctor)
+    run_cmd bash scripts/doctor.sh "$@"
     ;;
   start)
-    exec bundle exec rake start "$@"
+    run_cmd "$0" check
+    exec "$0" dev "$@"
     ;;
-  check|doctor)
-    exec bundle exec rake check "$@"
+  check)
+    run_cmd "$0" doctor "$@"
+    run_cmd "$0" smoke "$@"
+    ;;
+  doctor)
+    run_cmd bash scripts/doctor.sh "$@"
+    ;;
+  ui)
+    exec bash scripts/run_ui.sh "$@"
+    ;;
+  test)
+    run_cmd ruby test/services/profile_service_test.rb
+    run_cmd ruby test/services/memory_service_management_test.rb
+    run_cmd ruby test/services/retrieval_service_test.rb
+    run_cmd ruby test/services/embedding_service_test.rb
+    run_cmd ruby test/mcp/server_test.rb
+    run_cmd ruby test/mcp/tools_test.rb
+    run_cmd ruby test/ui/server_test.rb
+    run_cmd ruby test/db/sqlite_schema_test.rb
     ;;
   global-print)
-    exec bundle exec rake global_mcp:print "$@"
+    run_cmd bash scripts/install_global_cursor_mcp.sh --print
     ;;
   global-install)
-    exec bundle exec rake global_mcp:install "$@"
+    run_cmd bash scripts/install_global_cursor_mcp.sh --apply
     ;;
   *)
-    exec bundle exec rake "$command_name" "$@"
+    echo "Unknown command: $command_name"
+    print_help
+    exit 1
     ;;
 esac
 
