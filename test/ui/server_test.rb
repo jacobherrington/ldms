@@ -62,25 +62,25 @@ class UiServerTest < Minitest::Test
     assert_includes res.body, "factors:"
   end
 
-  def test_update_memory_quality_archives_memory_and_redirects
+  def test_render_dashboard_excludes_per_memory_action_buttons
     project_id = "ui-test-#{SecureRandom.hex(4)}"
     memory_service = @server.instance_variable_get(:@memory_service)
-    created = memory_service.save_memory(
-      content: "Keep retry logic idempotent",
+    memory_service.save_memory(
+      content: "Stable memory card",
       memory_type: "project_convention",
       scope: "project",
       project_id: project_id,
       confidence: 0.8
     )
 
-    req = fake_request(memory_id: created[:memory_id], project_id: project_id, action: "archive")
+    req = fake_request(project_id: project_id)
     res = fake_response
-    @server.send(:update_memory_quality, req, res)
+    @server.send(:render_dashboard, req, res)
 
-    assert_equal 303, res.status
-    memory = memory_service.list_memories(project_id: project_id, include_archived: true)
-                           .find { |row| row[:id] == created[:memory_id] }
-    assert_equal true, memory[:is_archived]
+    refute_includes res.body, "Delete</button>"
+    refute_includes res.body, "Archive</button>"
+    refute_includes res.body, "Mark Stale</button>"
+    refute_includes res.body, "Helpful</button>"
   end
 
   private

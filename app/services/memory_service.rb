@@ -159,7 +159,7 @@ module DevMemory
       end
 
       def list_memories(project_id: nil, memory_type: nil, query: nil, limit: 100, include_archived: false)
-        sql = +"SELECT * FROM memories WHERE 1=1"
+        sql = +"SELECT rowid AS _rowid, * FROM memories WHERE 1=1"
         bind_values = []
 
         if project_id && !project_id.to_s.strip.empty?
@@ -187,6 +187,7 @@ module DevMemory
         rows.map do |row|
           {
             id: row["id"],
+            rowid: row["_rowid"].to_i,
             content: row["content"],
             summary: row["summary"],
             memory_type: row["memory_type"],
@@ -256,10 +257,27 @@ module DevMemory
         { status: "ok", memory_id: memory_id, feedback: feedback, reason: normalized_reason }
       end
 
-      def delete_memory(memory_id:)
-        @db.execute("DELETE FROM vectors WHERE memory_id = ?", [memory_id])
-        @db.execute("DELETE FROM memories WHERE id = ?", [memory_id])
-        { status: "ok", deleted: true, memory_id: memory_id }
+      def delete_memory(memory_id:, memory_rowid: nil)
+        id = memory_id.to_s.strip
+        rowid = normalize_rowid(memory_rowid)
+        return { status: "invalid", deleted: false, memory_id: id, memory_rowid: rowid } if id.empty? && rowid.nil?
+
+        canonical_id = resolve_memory_id(id: id, rowid: rowid)
+        @db.execute("DELETE FROM vectors WHERE memory_id = ?", [canonical_id]) unless canonical_id.nil?
+
+        if rowid
+          @db.execute("DELETE FROM memories WHERE id = ? OR rowid = ?", [id, rowid])
+        else
+          @db.execute("DELETE FROM memories WHERE id = ?", [id])
+        end
+        deleted = @db.changes.positive?
+
+        {
+          status: deleted ? "ok" : "not_found",
+          deleted: deleted,
+          memory_id: id,
+          memory_rowid: rowid
+        }
       end
 
       def log_decision(project_id:, title:, decision:, rationale:)
@@ -648,6 +666,24 @@ module DevMemory
         return text if FEEDBACK_REASONS.include?(text)
 
         helpful ? "helpful" : "irrelevant"
+      end
+
+      def normalize_rowid(value)
+        text = value.to_s.strip
+        return nil if text.empty?
+
+        parsed = Integer(text, 10)
+        parsed.positive? ? parsed : nil
+      rescue ArgumentError
+        nil
+      end
+
+      def resolve_memory_id(id:, rowid:)
+        return id unless id.empty?
+        return nil if rowid.nil?
+
+        row = @db.get_first_row("SELECT id FROM memories WHERE rowid = ?", [rowid])
+        row && row["id"].to_s
       end
     end
   end

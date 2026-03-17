@@ -59,12 +59,6 @@ module DevMemory
           render_context_preview(req, res)
         when ["POST", "/memories"]
           create_memory(req, res)
-        when ["POST", "/memories/delete"]
-          delete_memory(req, res)
-        when ["POST", "/memories/quality"]
-          update_memory_quality(req, res)
-        when ["POST", "/memories/retrieval_feedback"]
-          update_retrieval_feedback(req, res)
         when ["POST", "/decisions"]
           create_decision(req, res)
         else
@@ -162,31 +156,6 @@ module DevMemory
           tags: parse_tags(req.query["tags"])
         )
         redirect_with_flash(res, req.query["project_id"], "Memory saved")
-      end
-
-      def delete_memory(req, res)
-        @memory_service.delete_memory(memory_id: req.query.fetch("memory_id"))
-        redirect_with_flash(res, req.query["project_id"], "Memory deleted")
-      end
-
-      def update_memory_quality(req, res)
-        action = req.query.fetch("action")
-        @memory_service.update_memory_quality(
-          memory_id: req.query.fetch("memory_id"),
-          action: action,
-          reason: value_or_nil(req.query["reason"])
-        )
-        redirect_with_flash(res, req.query["project_id"], "Memory updated: #{action}")
-      end
-
-      def update_retrieval_feedback(req, res)
-        helpful = req.query.fetch("helpful", "1") == "1"
-        @memory_service.record_retrieval_feedback(
-          memory_id: req.query.fetch("memory_id"),
-          helpful: helpful,
-          reason: value_or_nil(req.query["reason"])
-        )
-        redirect_with_flash(res, req.query["project_id"], helpful ? "Feedback saved: helpful" : "Feedback saved: not helpful")
       end
 
       def create_decision(req, res)
@@ -357,35 +326,6 @@ module DevMemory
                 <p><%= h(memory[:content]) %></p>
                 <div class="muted">project: <%= h(memory[:project_id].to_s) %> | state: <%= h(memory[:state].to_s) %> | created: <%= h(memory[:created_at].to_s) %></div>
                 <div class="muted">tags: <%= h(memory[:tags].join(", ")) %></div>
-                <form method="post" action="/memories/retrieval_feedback" class="inline">
-                  <input type="hidden" name="memory_id" value="<%= h(memory[:id]) %>">
-                  <input type="hidden" name="project_id" value="<%= h(@project_id) %>">
-                  <input type="hidden" name="helpful" value="1">
-                  <button type="submit">Helpful</button>
-                </form>
-                <form method="post" action="/memories/retrieval_feedback" class="inline">
-                  <input type="hidden" name="memory_id" value="<%= h(memory[:id]) %>">
-                  <input type="hidden" name="project_id" value="<%= h(@project_id) %>">
-                  <input type="hidden" name="helpful" value="0">
-                  <button type="submit">Not Helpful</button>
-                </form>
-                <form method="post" action="/memories/quality" class="inline">
-                  <input type="hidden" name="memory_id" value="<%= h(memory[:id]) %>">
-                  <input type="hidden" name="project_id" value="<%= h(@project_id) %>">
-                  <input type="hidden" name="action" value="mark_stale">
-                  <button type="submit">Mark Stale</button>
-                </form>
-                <form method="post" action="/memories/quality" class="inline">
-                  <input type="hidden" name="memory_id" value="<%= h(memory[:id]) %>">
-                  <input type="hidden" name="project_id" value="<%= h(@project_id) %>">
-                  <input type="hidden" name="action" value="archive">
-                  <button type="submit">Archive</button>
-                </form>
-                <form method="post" action="/memories/delete" class="inline">
-                  <input type="hidden" name="memory_id" value="<%= h(memory[:id]) %>">
-                  <input type="hidden" name="project_id" value="<%= h(@project_id) %>">
-                  <button type="submit">Delete</button>
-                </form>
               </div>
             <% end %>
 

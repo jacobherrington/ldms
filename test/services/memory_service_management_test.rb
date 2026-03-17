@@ -45,10 +45,44 @@ class MemoryServiceManagementTest < Minitest::Test
 
     result = @service.delete_memory(memory_id: created[:memory_id])
     assert_equal true, result[:deleted]
+    assert_equal "ok", result[:status]
 
     memories_after_delete = @service.list_memories(project_id: @project_id, limit: 10)
     ids_after_delete = memories_after_delete.map { |memory| memory[:id] }
     refute_includes ids_after_delete, created[:memory_id]
+  end
+
+  def test_delete_memory_returns_not_found_for_unknown_id
+    result = @service.delete_memory(memory_id: SecureRandom.uuid)
+
+    assert_equal false, result[:deleted]
+    assert_equal "not_found", result[:status]
+  end
+
+  def test_delete_memory_returns_invalid_for_blank_id
+    result = @service.delete_memory(memory_id: "  ")
+
+    assert_equal false, result[:deleted]
+    assert_equal "invalid", result[:status]
+  end
+
+  def test_delete_memory_can_fallback_to_rowid_when_id_is_stale
+    created = @service.save_memory(
+      content: "Delete by rowid fallback",
+      memory_type: "project_convention",
+      scope: "project",
+      project_id: @project_id,
+      confidence: 0.8
+    )
+    row = @service.list_memories(project_id: @project_id, limit: 10)
+                  .find { |memory| memory[:id] == created[:memory_id] }
+
+    result = @service.delete_memory(memory_id: "stale-id", memory_rowid: row[:rowid])
+
+    assert_equal true, result[:deleted]
+    assert_equal "ok", result[:status]
+    remaining = @service.list_memories(project_id: @project_id, limit: 10)
+    refute_includes remaining.map { |memory| memory[:id] }, created[:memory_id]
   end
 
   def test_redacts_assignment_style_secret_before_persisting
