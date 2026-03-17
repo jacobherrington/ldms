@@ -2,6 +2,7 @@ require "json"
 require_relative "../services/profile_service"
 require_relative "../services/memory_service"
 require_relative "../services/retrieval_service"
+require_relative "../services/memory_loop_service"
 
 module DevMemory
   module MCP
@@ -10,11 +11,13 @@ module DevMemory
         profile_service: DevMemory::Services::ProfileService.new,
         memory_service: DevMemory::Services::MemoryService.new,
         retrieval_service: DevMemory::Services::RetrievalService.new,
+        memory_loop_service: nil,
         default_project_id: ENV["LDMS_PROJECT_ID"] || "default-project"
       )
         @profile_service = profile_service
         @memory_service = memory_service
         @retrieval_service = retrieval_service
+        @memory_loop_service = memory_loop_service || DevMemory::Services::MemoryLoopService.new(memory_service: @memory_service)
         @default_project_id = default_project_id
       end
 
@@ -97,6 +100,26 @@ module DevMemory
             }
           },
           {
+            name: "process_task_review",
+            description: "Parse post-task review notes and auto-save durable memories by confidence threshold.",
+            inputSchema: {
+              type: "object",
+              required: %w[task review_text],
+              properties: {
+                task: { type: "string" },
+                review_text: { type: "string" },
+                task_type: {
+                  type: "string",
+                  enum: %w[feature bugfix refactor docs test ops auto],
+                  default: "auto"
+                },
+                project_id: { type: ["string", "null"] },
+                auto_save_threshold: { type: "number", default: 0.85 },
+                scope: { type: "string", default: "project" }
+              }
+            }
+          },
+          {
             name: "seed_developer_memories",
             description: "Seed curated memory entries based on developers you like.",
             inputSchema: {
@@ -175,6 +198,17 @@ module DevMemory
               project_id: resolve_project_id(args["project_id"]),
               confidence: args.fetch("confidence", 0.8),
               tags: args.fetch("tags", [])
+            )
+          )
+        when "process_task_review"
+          payload(
+            review_result: @memory_loop_service.process_task_review(
+              task: args.fetch("task"),
+              review_text: args.fetch("review_text"),
+              project_id: resolve_project_id(args["project_id"]),
+              task_type: args.fetch("task_type", "auto"),
+              auto_save_threshold: args.fetch("auto_save_threshold", 0.85),
+              scope: args.fetch("scope", "project")
             )
           )
         when "seed_developer_memories"

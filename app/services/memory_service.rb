@@ -111,18 +111,28 @@ module DevMemory
           ]
         )
 
-        embedding = @embedding_service.embed(sanitized_content)
-        @vector_store.upsert(
-          memory_id: id,
-          embedding: embedding,
-          project_id: project_id,
-          memory_type: memory_type,
-          scope: scope,
-          confidence: confidence.to_f,
-          tags: normalized_tags
-        )
+        vector_indexed = true
+        begin
+          embedding = @embedding_service.embed(sanitized_content)
+          @vector_store.upsert(
+            memory_id: id,
+            embedding: embedding,
+            project_id: project_id,
+            memory_type: memory_type,
+            scope: scope,
+            confidence: confidence.to_f,
+            tags: normalized_tags
+          )
+        rescue EmbeddingService::EmbeddingError
+          # Keep writes available when local embeddings are offline.
+          vector_indexed = false
+        end
 
-        { status: "ok", memory_id: id }
+        {
+          status: "ok",
+          memory_id: id,
+          vector_indexed: vector_indexed
+        }
       end
 
       def search_memory(query:, project_id:, top_k: 8, memory_types: nil, ranking_profile: "balanced")

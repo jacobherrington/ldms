@@ -109,4 +109,15 @@ class RetrievalServiceTest < Minitest::Test
     assert_equal ["Avoid fat controllers"], packet[:working_context][:pitfalls]
     assert_equal "task_keywords", packet[:context_trace][:task_type_inference][:inferred_from]
   end
+
+  def test_build_task_context_infers_feature_from_implementation_verbs
+    packet = @service.build_task_context(
+      task: "implement billing retry flow",
+      project_id: "alpha",
+      top_k: 8
+    )
+
+    assert_equal "feature", packet[:task_type]
+    assert_equal "task_keywords", packet[:context_trace][:task_type_inference][:inferred_from]
+  end
 end

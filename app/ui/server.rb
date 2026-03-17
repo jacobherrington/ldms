@@ -61,6 +61,10 @@ module DevMemory
           create_memory(req, res)
         when ["POST", "/memories/delete"]
           delete_memory(req, res)
+        when ["POST", "/memories/quality"]
+          update_memory_quality(req, res)
+        when ["POST", "/memories/retrieval_feedback"]
+          update_retrieval_feedback(req, res)
         when ["POST", "/decisions"]
           create_decision(req, res)
         else
@@ -84,6 +88,15 @@ module DevMemory
           query: value_or_nil(@query),
           limit: 200
         )
+        @search_results = if value_or_nil(@query)
+                            @memory_service.search_memory(
+                              query: @query,
+                              project_id: value_or_nil(@project_id),
+                              top_k: 8
+                            )
+                          else
+                            []
+                          end
         @decisions = @memory_service.list_decisions(project_id: value_or_nil(@project_id), limit: 100)
 
         res["Content-Type"] = "text/html"
@@ -154,6 +167,26 @@ module DevMemory
       def delete_memory(req, res)
         @memory_service.delete_memory(memory_id: req.query.fetch("memory_id"))
         redirect_with_flash(res, req.query["project_id"], "Memory deleted")
+      end
+
+      def update_memory_quality(req, res)
+        action = req.query.fetch("action")
+        @memory_service.update_memory_quality(
+          memory_id: req.query.fetch("memory_id"),
+          action: action,
+          reason: value_or_nil(req.query["reason"])
+        )
+        redirect_with_flash(res, req.query["project_id"], "Memory updated: #{action}")
+      end
+
+      def update_retrieval_feedback(req, res)
+        helpful = req.query.fetch("helpful", "1") == "1"
+        @memory_service.record_retrieval_feedback(
+          memory_id: req.query.fetch("memory_id"),
+          helpful: helpful,
+          reason: value_or_nil(req.query["reason"])
+        )
+        redirect_with_flash(res, req.query["project_id"], helpful ? "Feedback saved: helpful" : "Feedback saved: not helpful")
       end
 
       def create_decision(req, res)
@@ -263,6 +296,21 @@ module DevMemory
               <div class="muted" id="monitor-types">Type counts: -</div>
             </div>
 
+            <% if !@search_results.empty? %>
+              <h2>Search Ranking Preview (<%= @search_results.length %>)</h2>
+              <% @search_results.each do |result| %>
+                <div class="card">
+                  <div>
+                    <span class="chip"><%= h(result[:memory_type]) %></span>
+                    <span class="chip">score=<%= h(result[:combined_score].round(4).to_s) %></span>
+                    <span class="chip">profile=<%= h(result.dig(:ranking_explanation, :profile).to_s) %></span>
+                  </div>
+                  <p><strong><%= h(result[:summary]) %></strong></p>
+                  <p class="muted">factors: <%= h(ranking_factors_text(result[:ranking_explanation])) %></p>
+                </div>
+              <% end %>
+            <% end %>
+
             <div class="row">
               <form method="post" action="/memories" class="panel">
                 <strong>Add Memory</strong>
@@ -307,8 +355,32 @@ module DevMemory
                 </div>
                 <p><strong><%= h(memory[:summary]) %></strong></p>
                 <p><%= h(memory[:content]) %></p>
-                <div class="muted">project: <%= h(memory[:project_id].to_s) %> | created: <%= h(memory[:created_at].to_s) %></div>
+                <div class="muted">project: <%= h(memory[:project_id].to_s) %> | state: <%= h(memory[:state].to_s) %> | created: <%= h(memory[:created_at].to_s) %></div>
                 <div class="muted">tags: <%= h(memory[:tags].join(", ")) %></div>
+                <form method="post" action="/memories/retrieval_feedback" class="inline">
+                  <input type="hidden" name="memory_id" value="<%= h(memory[:id]) %>">
+                  <input type="hidden" name="project_id" value="<%= h(@project_id) %>">
+                  <input type="hidden" name="helpful" value="1">
+                  <button type="submit">Helpful</button>
+                </form>
+                <form method="post" action="/memories/retrieval_feedback" class="inline">
+                  <input type="hidden" name="memory_id" value="<%= h(memory[:id]) %>">
+                  <input type="hidden" name="project_id" value="<%= h(@project_id) %>">
+                  <input type="hidden" name="helpful" value="0">
+                  <button type="submit">Not Helpful</button>
+                </form>
+                <form method="post" action="/memories/quality" class="inline">
+                  <input type="hidden" name="memory_id" value="<%= h(memory[:id]) %>">
+                  <input type="hidden" name="project_id" value="<%= h(@project_id) %>">
+                  <input type="hidden" name="action" value="mark_stale">
+                  <button type="submit">Mark Stale</button>
+                </form>
+                <form method="post" action="/memories/quality" class="inline">
+                  <input type="hidden" name="memory_id" value="<%= h(memory[:id]) %>">
+                  <input type="hidden" name="project_id" value="<%= h(@project_id) %>">
+                  <input type="hidden" name="action" value="archive">
+                  <button type="submit">Archive</button>
+                </form>
                 <form method="post" action="/memories/delete" class="inline">
                   <input type="hidden" name="memory_id" value="<%= h(memory[:id]) %>">
                   <input type="hidden" name="project_id" value="<%= h(@project_id) %>">
@@ -379,6 +451,14 @@ module DevMemory
 
       def h(value)
         ERB::Util.html_escape(value.to_s)
+      end
+
+      def ranking_factors_text(explanation)
+        return "n/a" unless explanation.is_a?(Hash)
+        factors = explanation[:factors] || explanation["factors"]
+        return "n/a" unless factors.is_a?(Hash)
+
+        factors.map { |key, value| "#{key}=#{value}" }.join(", ")
       end
     end
   end

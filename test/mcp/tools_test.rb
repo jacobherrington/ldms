@@ -80,14 +80,36 @@ class FakeRetrievalServiceForTools
   end
 end
 
+class FakeMemoryLoopServiceForTools
+  attr_reader :last_args
+
+  def process_task_review(task:, project_id:, review_text:, task_type:, auto_save_threshold:, scope:)
+    @last_args = {
+      task: task,
+      project_id: project_id,
+      review_text: review_text,
+      task_type: task_type,
+      auto_save_threshold: auto_save_threshold,
+      scope: scope
+    }
+    {
+      status: "ok",
+      saved_count: 1,
+      suggestion_count: 0
+    }
+  end
+end
+
 class ToolsTest < Minitest::Test
   def setup
     @memory_service = FakeMemoryServiceForTools.new
     @retrieval_service = FakeRetrievalServiceForTools.new
+    @memory_loop_service = FakeMemoryLoopServiceForTools.new
     @tools = DevMemory::MCP::Tools.new(
       profile_service: FakeProfileServiceForTools.new,
       memory_service: @memory_service,
       retrieval_service: @retrieval_service,
+      memory_loop_service: @memory_loop_service,
       default_project_id: "default-project"
     )
   end
@@ -106,6 +128,7 @@ class ToolsTest < Minitest::Test
     assert_includes names, "get_context_packet"
     assert_includes names, "begin_task_context"
     assert_includes names, "save_memory"
+    assert_includes names, "process_task_review"
     assert_includes names, "seed_developer_memories"
     assert_includes names, "log_decision"
   end
@@ -190,5 +213,19 @@ class ToolsTest < Minitest::Test
     assert_equal "default-project", @memory_service.seeded.last[:project_id]
     assert_equal "global", @memory_service.seeded.last[:scope]
     assert_equal 0.86, @memory_service.seeded.last[:confidence]
+  end
+
+  def test_process_task_review_uses_default_project_when_missing
+    result = @tools.call(
+      "process_task_review",
+      {
+        "task" => "improve onboarding",
+        "review_text" => "Convention: keep setup one-command"
+      }
+    )
+
+    assert_equal "ok", result[:structuredContent][:review_result][:status]
+    assert_equal "default-project", @memory_loop_service.last_args[:project_id]
+    assert_equal 0.85, @memory_loop_service.last_args[:auto_save_threshold]
   end
 end

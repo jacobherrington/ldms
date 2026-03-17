@@ -6,8 +6,8 @@ It stores preferences, conventions, and decisions so context gets better over ti
 ## 5-Minute Start
 
 1. From this folder, run:
-   - `bin/ldms setup`
-2. Start LDMS:
+   - `bin/ldms install`
+2. Start LDMS UI:
    - `bin/ldms`
 3. Open the UI URL shown in terminal.
 4. Reload Cursor window once.
@@ -17,14 +17,20 @@ It stores preferences, conventions, and decisions so context gets better over ti
 ## Daily Flow
 
 1. Start LDMS with `bin/ldms`
-2. Ask Cursor to run preflight context before larger tasks:
+2. Ask Cursor to run task-aware preflight context before larger tasks:
    - `Call begin_task_context with task "..." and task_type "auto"`
    - `task_type` options: `feature`, `bugfix`, `refactor`, `docs`, `test`, `ops`, `auto`
 3. (Optional) Use low-level context packet for debugging:
    - `Call get_context_packet with task "..."`
-4. Save useful patterns/decisions:
+4. After implementation, run post-task review persistence:
+   - `Call process_task_review with task "..." and review_text "..."`
+5. Save useful patterns/decisions directly when needed:
    - `Call save_memory ...`
    - `Call log_decision ...`
+
+Or use one command from terminal for local flow:
+- `bin/ldms task --task "implement feature X"`
+- Optional autosave pass: add `--review-file /path/to/review.txt`
 
 ### Task Type Examples
 
@@ -45,11 +51,14 @@ It stores preferences, conventions, and decisions so context gets better over ti
 
 ## Commands
 
+- `bin/ldms install` - one-command setup + doctor + bootstrap
 - `bin/ldms` or `bin/ldms up` - start UI-first mode
+- `bin/ldms task` - run task preflight and optional post-task memory loop
 - `bin/ldms start` - doctor + smoke + MCP server
 - `bin/ldms dev` - MCP server only
 - `bin/ldms ui` - UI only
 - `bin/ldms check` - doctor + smoke
+- `bin/ldms bootstrap` - seed starter project memories
 - `bin/ldms test` - test suite
 - `bin/ldms global-install` - install global Cursor MCP entry
 - `bin/ldms global-print` - print global MCP snippet
@@ -61,6 +70,7 @@ It stores preferences, conventions, and decisions so context gets better over ti
 - `begin_task_context`
 - `get_context_packet`
 - `save_memory`
+- `process_task_review`
 - `seed_developer_memories`
 - `log_decision`
 

@@ -146,6 +146,27 @@ class MemoryServiceManagementTest < Minitest::Test
     assert_equal "project_convention", results.first[:memory_type]
   end
 
+  def test_save_memory_succeeds_when_embeddings_are_offline
+    degraded_service = DevMemory::Services::MemoryService.new(
+      db: @db,
+      vector_store: DevMemory::DB::VectorStore.new(db: @db),
+      embedding_service: FailingEmbeddingService.new
+    )
+
+    result = degraded_service.save_memory(
+      content: "Retries should use capped backoff",
+      memory_type: "project_convention",
+      scope: "project",
+      project_id: @project_id,
+      confidence: 0.8
+    )
+
+    assert_equal "ok", result[:status]
+    assert_equal false, result[:vector_indexed]
+    memory = degraded_service.list_memories(project_id: @project_id).find { |row| row[:id] == result[:memory_id] }
+    refute_nil memory
+  end
+
   def test_seed_developer_memories_creates_records_and_skips_duplicates
     seeded = @service.seed_developer_memories(
       developers: ["Sandi Metz", "Unknown Dev"],

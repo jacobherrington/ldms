@@ -8,6 +8,17 @@ run_cmd() {
   "$@"
 }
 
+print_cursor_next_steps() {
+  cat <<'EOF'
+
+[ldms] next steps in Cursor:
+1. Reload Cursor window.
+2. In chat run: Call begin_task_context with task "implement feature X" and task_type "feature"
+3. Verify profile: Call get_dev_profile
+4. (Optional debug): Call get_context_packet with task "implement feature X"
+EOF
+}
+
 warn_legacy() {
   echo "[ldms] note: '$1' is a compatibility alias."
 }
@@ -20,12 +31,15 @@ Usage:
   bin/ldms [command] [args]
 
 Commands:
+  install      One-command setup + verification + bootstrap
   up           Single-command startup (default, UI-first)
+  task         Run task preflight + optional memory loop
   help         Show this help
   start        Run doctor + smoke + MCP server
   dev          Start MCP server only
   ui           Start UI only
   check        Run doctor + smoke
+  bootstrap    Seed starter project memories
   doctor       Run local diagnostics
   smoke        Run MCP initialize smoke check
   setup        Install dependencies + init DB
@@ -43,10 +57,26 @@ else
 fi
 
 case "$command_name" in
+  install)
+    echo "[ldms] running one-command install flow"
+    if bundle check >/dev/null 2>&1; then
+      echo "[ldms] ruby dependencies already installed"
+    else
+      run_cmd bundle install
+    fi
+    run_cmd ruby scripts/init_db.rb
+    run_cmd bash scripts/doctor.sh
+    run_cmd ruby scripts/bootstrap_memories.rb
+    echo "[ldms] install flow complete"
+    print_cursor_next_steps
+    ;;
   up)
     echo "[ldms] starting UI-first mode (single command)"
     echo "[ldms] Cursor MCP tools are launched by Cursor using configured MCP server entries."
     exec bash scripts/run_ui.sh "$@"
+    ;;
+  task)
+    exec ruby scripts/task_context.rb "$@"
     ;;
   help|-h|--help)
     print_help
@@ -75,17 +105,21 @@ case "$command_name" in
     run_cmd "$0" doctor "$@"
     run_cmd "$0" smoke "$@"
     ;;
-  doctor)
-    run_cmd bash scripts/doctor.sh "$@"
+  bootstrap)
+    run_cmd ruby scripts/bootstrap_memories.rb "$@"
     ;;
   ui)
     exec bash scripts/run_ui.sh "$@"
     ;;
   test)
+    run_cmd ruby test/bin/ldms_command_test.rb
+    run_cmd ruby test/scripts/task_context_test.rb
     run_cmd ruby test/services/profile_service_test.rb
     run_cmd ruby test/services/memory_service_management_test.rb
+    run_cmd ruby test/services/memory_loop_service_test.rb
     run_cmd ruby test/services/retrieval_service_test.rb
     run_cmd ruby test/services/embedding_service_test.rb
+    run_cmd ruby test/services/bootstrap_service_test.rb
     run_cmd ruby test/mcp/server_test.rb
     run_cmd ruby test/mcp/tools_test.rb
     run_cmd ruby test/ui/server_test.rb

@@ -4,16 +4,25 @@ globs:
 alwaysApply: true
 ---
 
-Always retrieve context before major coding tasks.
+Always retrieve task-aware context before coding tasks and close with a post-task memory pass.
 
-Before any non-trivial implementation (architecture, auth, data model, core logic):
-1) call `begin_task_context` with task + task_type (+ optional project_id)
+For feature, bugfix, refactor, docs, test, and ops work:
+1) call `begin_task_context` first with task + task_type (+ optional project_id)
 2) use retrieved context to guide changes
+3) after implementation, run a post-task review with durable notes
+4) call `process_task_review` with `task` + `review_text` (and optional threshold) to auto-save high-confidence memories
+5) treat this as the default workflow, not an optional extra step
 
 Default `project_id` resolves to the current workspace automatically.
 Recommended `task_type`: `feature`, `bugfix`, `refactor`, `docs`, `test`, `ops`, or `auto`.
 
 Use `get_context_packet` only when you need lower-level/debug retrieval output.
+
+For post-task review notes, prefer concise bullets:
+- `Convention: ...`
+- `Pattern: ...`
+- `Pitfall: ...`
+- `Decision: ...`
 
 If user expresses a stable preference:
 call `save_memory` with `memory_type=dev_preference`.
@@ -26,5 +35,6 @@ call `log_decision` with clear rationale.
 
 Only save memories that are durable and likely useful in future sessions.
 Do not auto-save uncertain or temporary observations.
+Use confidence gating (default 0.85) for autosave.
 
 Never save secrets (keys, tokens, credentials).

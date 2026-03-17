@@ -128,11 +128,12 @@ module DevMemory
 
       def infer_task_type(task)
         text = task.to_s.downcase
-        return "bugfix" if text.match?(/\b(bug|fix|error|regression|broken|failure)\b/)
-        return "refactor" if text.match?(/\b(refactor|cleanup|simplify|restructure)\b/)
-        return "test" if text.match?(/\b(test|spec|coverage|flaky)\b/)
-        return "docs" if text.match?(/\b(doc|docs|readme|guide|onboard)\b/)
-        return "ops" if text.match?(/\b(deploy|infra|ops|ci|pipeline|monitor)\b/)
+        return "bugfix" if text.match?(/\b(bug|fix|error|regression|broken|failure|debug|hotfix|incident)\b/)
+        return "refactor" if text.match?(/\b(refactor|cleanup|simplify|restructure|extract|rename)\b/)
+        return "test" if text.match?(/\b(test|spec|coverage|flaky|assert|regression test)\b/)
+        return "docs" if text.match?(/\b(doc|docs|readme|guide|onboard|documentation|how-to)\b/)
+        return "ops" if text.match?(/\b(deploy|infra|ops|ci|pipeline|monitor|observability|rollback)\b/)
+        return "feature" if text.match?(/\b(add|implement|build|create|introduce|support|enable)\b/)
 
         "feature"
       end

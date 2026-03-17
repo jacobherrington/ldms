@@ -1,0 +1,27 @@
+---
+description: Required done checklist before closing substantial coding tasks
+globs:
+alwaysApply: true
+---
+
+Before marking a substantial task as done, produce a concise checklist:
+
+1) Verification run
+- State what was executed (tests, smoke checks, or manual validation).
+- State pass/fail outcome.
+
+2) Risk review
+- List likely regressions or edge cases that still need attention.
+
+3) Memory candidates
+- Capture durable learnings from the task using bullets:
+  - `Convention: ...`
+  - `Pattern: ...`
+  - `Pitfall: ...`
+  - `Decision: ...`
+
+4) Persistence
+- Call `process_task_review` with the task and review bullets.
+- Auto-save only high-confidence durable items.
+
+Never store secrets or temporary debugging notes.
